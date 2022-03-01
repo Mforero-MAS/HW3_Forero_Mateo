@@ -1,0 +1,77 @@
+---
+title: "STAA 566 HW 3"
+author: "Mateo Forero"
+output: html_document
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file, encoding = encoding,
+  output_file = file.path(dirname(input_file), out_dir, 'index.html'))})
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Source, information, and implementation
+The data set was sourced from the [CDC website](https://www.cdc.gov/nchs/pressroom/sosmap/heart_disease_mortality/heart_disease.htm) and was downloaded specifically as a csv. No work was done on the csv file directly and all manipulation was done within R. This data is specific for the The 48 contiguous states of America and is meant to communicate different death rates (age adjusted for 35+) for each state. 
+
+This map specifically shows a 7 year history of death rate caused by heart disease and uses pop up graphs to demonstrate this data. As an additional development that could have been used, plotly would've been used to add a drop menu to select an active year on the map. The popup graphs could have still shown a 5 year plot but a choropleth could have been used to show the severity between each state depending on the year chosen.  
+
+
+
+## Code
+```{r, warning=FALSE, message=FALSE}
+#Importing Library and data set
+library(tidyverse)
+library(maps)
+library(leaflet)
+library(leafpop)
+raw_data <- read.csv("HD_2020.csv")
+head(raw_data)
+```
+
+```{r}
+# Cleaning the Raw Data
+raw_data$NAME <- str_to_title(str_extract(raw_data$URL,"(?<=states/).+(?=/)"))
+raw_data <- raw_data[-which(raw_data$NAME == "Alaska"),]
+raw_data <- raw_data[-which(raw_data$NAME == "Hawaii"),]
+raw_data$DEATHS <- str_remove(raw_data$DEATHS,",")
+raw_data$DEATHS <- as.integer(raw_data$DEATHS)
+raw_data <- dplyr::filter(raw_data,YEAR != 2005)
+map_data <- raw_data[,-5]
+head(map_data)
+```
+
+```{r}
+raw_map <- map_data('state')
+lat_info <- raw_map %>% group_by(region) %>% summarise(long = mean(long),
+                                                  lat = mean(lat))
+colnames(lat_info)[1] <- "NAME"
+lat_info$NAME <- str_to_title(lat_info$NAME)
+lat_info <- lat_info[-which(lat_info$NAME == "District Of Columbia"),]
+
+```
+
+
+```{r}
+make_graph <- function(id){
+  ggplot(filter(map_data, NAME == id)) + geom_line(aes(x= YEAR,y=RATE), lwd = 2) +
+  theme_minimal() + ylab("Death Rate per 100,000") + xlab("Year") +
+  ggtitle(paste0("Heart Disease Death Rate in ",
+                 filter(map_data, NAME == id)[5,'NAME']))
+}
+plot_all <- lapply(unique(map_data$NAME),make_graph)
+lat_info$NAME <- unique(map_data$NAME)
+```
+
+
+
+
+```{r}
+leaflet(lat_info) %>% 
+  setView(-96, 37.8, 4) %>%
+  addTiles() %>%
+  addAwesomeMarkers(~long, ~lat,label = ~NAME,
+                    popup = popupGraph(plot_all, width = 300, height = 200))
+
+```
